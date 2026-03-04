@@ -7,6 +7,8 @@ import { checkQuota, incrementQuota } from '@/lib/quota';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q')?.trim();
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
+  const limit = parseInt(searchParams.get('limit') || '30', 10);
 
   if (!q) {
     return NextResponse.json({ error: 'Missing query' }, { status: 400 });
@@ -74,7 +76,7 @@ export async function GET(request: Request) {
     // 3. Search galleries from API
     const hasQuota2 = await checkQuota();
     if (hasQuota2) {
-      const apiResult = await adultDataLink.pornpics.search(q, 0, 30);
+      const apiResult = await adultDataLink.pornpics.search(q, offset, limit);
       await incrementQuota();
 
       if (apiResult && apiResult.posts) {

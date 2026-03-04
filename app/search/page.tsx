@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Search, Loader2, ArrowLeft, Folder, Star, Heart, Share2 } from 'lucide-react'
@@ -11,17 +11,67 @@ export default function SearchPage() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
   const [results, setResults] = useState<any>(null)
+  const [galleries, setGalleries] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const loaderRef = useRef<HTMLDivElement>(null)
 
+  // Initial search
   useEffect(() => {
     if (!query) return
     setIsLoading(true)
-    fetch(`/api/search?q=${encodeURIComponent(query)}`)
+    setGalleries([])
+    setOffset(0)
+    setHasMore(true)
+
+    fetch(`/api/search?q=${encodeURIComponent(query)}&offset=0&limit=20`)
       .then(res => res.json())
-      .then(data => setResults(data))
+      .then(data => {
+        setResults(data)
+        setGalleries(data.galleries || [])
+        setOffset(data.galleries?.length || 0)
+        if (!data.galleries || data.galleries.length < 20) setHasMore(false)
+      })
       .catch(console.error)
       .finally(() => setIsLoading(false))
   }, [query])
+
+  // Load more galleries
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore || !query) return
+    setIsLoadingMore(true)
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&offset=${offset}&limit=20`)
+      const data = await res.json()
+      if (data.galleries && data.galleries.length > 0) {
+        setGalleries(prev => [...prev, ...data.galleries])
+        setOffset(prev => prev + data.galleries.length)
+        if (data.galleries.length < 20) setHasMore(false)
+      } else {
+        setHasMore(false)
+      }
+    } catch {
+      setHasMore(false)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [offset, hasMore, isLoadingMore, query])
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    if (loaderRef.current) observer.observe(loaderRef.current)
+    return () => observer.disconnect()
+  }, [hasMore, isLoadingMore, loadMore])
 
   return (
     <div className="flex flex-col w-full max-w-[1600px] mx-auto px-2 md:px-6 py-4 md:py-6 bg-background min-h-screen">
@@ -110,14 +160,11 @@ export default function SearchPage() {
           {/* Category/Tag Results (when no model found — keyword/category searches) */}
           {!results.model && (results.categories?.length > 0 || results.channels?.length > 0) && (
             <div className="flex flex-col gap-4 mb-6">
-              {/* Header */}
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-black uppercase tracking-tight text-foreground/80">
                   Showing results for: <span className="text-pink-500">&quot;{query}&quot;</span>
                 </h2>
               </div>
-
-              {/* Related tags */}
               <div className="flex flex-wrap gap-2">
                 {results.channels?.map((c: any, i: number) => (
                   <Link
@@ -142,33 +189,42 @@ export default function SearchPage() {
           )}
 
           {/* Galleries Grid */}
-          {results.galleries?.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1">
-              {results.galleries.map((g: any, i: number) => (
+          {galleries.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
+              {galleries.map((g: any, i: number) => (
                 <Link
                   key={`gal-${i}`}
                   href={`/gallery/${g.slug}`}
-                  className="group relative aspect-[2/3] overflow-hidden bg-muted/20"
+                  className="relative aspect-[2/3] overflow-hidden bg-muted/20"
                 >
                   <img 
                     src={g.cover_url} 
                     alt={g.title} 
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    className="absolute inset-0 w-full h-full object-cover"
                     loading="lazy" 
                   />
-                  {/* Bottom title overlay */}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-2 pt-8">
-                    <p className="text-[11px] font-bold text-white leading-tight line-clamp-2 drop-shadow-lg">
-                      {g.title}
-                    </p>
-                  </div>
                 </Link>
               ))}
             </div>
           )}
 
+          {/* Infinite Scroll Loader */}
+          {hasMore && galleries.length > 0 && (
+            <div ref={loaderRef} className="mt-8 py-10 flex justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-pink-500" />
+            </div>
+          )}
+
+          {/* End of results */}
+          {!hasMore && galleries.length > 0 && (
+            <div className="mt-8 py-6 flex flex-col items-center gap-1 border-t border-muted/20">
+              <p className="text-muted-foreground text-xs font-medium">End of results</p>
+              <p className="text-muted-foreground/50 text-[10px] uppercase font-bold">Showing {galleries.length} items</p>
+            </div>
+          )}
+
           {/* No Results */}
-          {!results.model && results.galleries?.length === 0 && (
+          {!results.model && galleries.length === 0 && (
             <div className="py-20 text-center">
               <Search className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
               <p className="text-muted-foreground font-bold text-lg">No results found</p>
