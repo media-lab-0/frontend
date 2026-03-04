@@ -15,4 +15,8 @@ const eslintConfig = defineConfig([
   ]),
 ]);
 
-export default eslintConfig;
+export default tseslint.config({
+  rules: {
+    "@typescript-eslint/no-explicit-any": "error"
+  }
+});

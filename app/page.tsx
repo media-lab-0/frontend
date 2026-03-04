@@ -1,65 +1,82 @@
-import Image from "next/image";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @next/next/no-img-element */
+import { sql } from '@/lib/db';
+import { categoryCache, redis } from '@/lib/redis';
+import { CategoryGrid } from '@/components/gallery/CategoryGrid';
+// Helpers to shuffle data outside the render cycle
+const extractRandomRedisKeys = (keys: string[], limit: number) => {
+  const shuffled = [...keys];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, limit);
+};
 
-export default function Home() {
+export default async function Home() {
+  // 1. Try fetching from Redis first for extremely fast loading
+  let categories: any[] = [];
+  try {
+    const cached = await redis.keys('homecat:*');
+    if (cached && cached.length > 50) {
+      // Fetch a bunch of them (Redis is fast)
+      const randomKeys = extractRandomRedisKeys(cached, 150);
+      const pipeline = redis.pipeline();
+      randomKeys.forEach(k => pipeline.get(k));
+      const results = await pipeline.exec();
+      categories = results.filter(Boolean).map((cat: any, index: number) => {
+        // Handle existing cache entries that might be missing the slug
+        if (!cat.slug) {
+           cat.slug = randomKeys[index].replace('homecat:', '');
+        }
+        return cat;
+      }) as any[];
+    }
+  } catch (err) {
+    console.error("Redis Cache Error:", err);
+  }
+
+  // 2. Fallback to SQL if Redis is empty or fails
+  if (categories.length < 50) {
+    try {
+      const dbTags = await sql`
+        SELECT name, slug, image_url, is_popular 
+        FROM tags 
+        WHERE is_category = true 
+          AND image_url IS NOT NULL 
+          AND name IS NOT NULL
+        ORDER BY is_popular DESC
+        LIMIT 3000
+      `;
+      
+      if (dbTags && dbTags.length > 0) {
+        // Filter out any potential empty or undefined values
+        const validTags = dbTags.filter((t: any) => t.name && t.slug && t.image_url);
+        categories = validTags;
+        // Background populate Redis (don't await for faster response)
+        categoryCache.setAll(validTags as any[]).catch(console.error);
+      }
+    } catch (err) {
+      console.error("SQL Fallback Error:", err);
+    }
+  }
+
+  // Remove blocking hydration from here. It should be triggered manually via /api/sync or a background cron.
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex-1 flex flex-col w-full max-w-[1600px] mx-auto px-2 md:px-4 py-6 bg-background">
+      
+      {/* Header section matching the screenshot style */}
+      <div className="flex items-center gap-2 mb-6 px-2">
+        <h1 className="text-xl font-bold text-foreground/90">Top Porn Categories</h1>
+        <div className="flex bg-muted/30 p-0.5 rounded-sm">
+           <button className="px-4 py-1 text-xs font-bold bg-background text-foreground shadow-sm rounded-sm">Popular</button>
+           <button className="px-4 py-1 text-xs font-bold text-muted-foreground hover:text-foreground">List</button>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+
+      {/* Dense Category Grid (Auto-Load enabled) */}
+      <CategoryGrid initialCategories={categories} />
     </div>
   );
 }
