@@ -56,7 +56,7 @@ function VideoPlayer() {
   const relatedVideos = videoData?.related_videos || []
 
   return (
-    <div className="flex-1 flex flex-col gap-6 w-full max-w-[1600px] mx-auto px-2 md:px-4 py-6 bg-background min-h-screen">
+    <div className="flex-1 flex flex-col gap-3 w-full max-w-[1600px] mx-auto px-2 md:px-4 py-6 bg-background min-h-screen">
       
       {/* Back */}
       <Link 

@@ -27,18 +27,32 @@ export async function GET(request: Request) {
       // --- LetsJerkTV ---
       if (mode === 'categories') {
         // Fetch category list
-        const data = await adultDataLink.letsjerktv.getCategories();
+        const data = await adultDataLink.letsjerktv.getCategories({ page });
         await incrementQuota();
-        categories = data?.categories || data || [];
-        return NextResponse.json({ categories });
+        const rawCats = data?.categories || data || [];
+        categories = rawCats.map((c: any) => ({
+          name: c.category_name || c.name || '',
+          slug: c.category_name || c.name || '',
+          thumbnail: c.category_image || c.thumbnail || c.image || null,
+          count: c.video_count || c.count || 0,
+          link: c.category_link || c.link || '',
+        }));
+        return NextResponse.json({ categories, hasMore: rawCats.length >= 20 });
       }
 
       if (mode === 'pornstars') {
-        // Fetch pornstar list
+        // Fetch pornstar list — API returns "models" not "pornstars"
         const data = await adultDataLink.letsjerktv.getPornstars({ page });
         await incrementQuota();
-        pornstars = data?.pornstars || data || [];
-        return NextResponse.json({ pornstars, hasMore: pornstars.length >= 20 });
+        const rawModels = data?.models || data?.pornstars || data || [];
+        pornstars = rawModels.map((m: any) => ({
+          name: m.model_name || m.name || '',
+          slug: (m.model_link || '').split('/').filter(Boolean).pop() || '',
+          thumbnail: m.model_image || m.image || m.thumbnail || null,
+          videos: parseInt(m.video_count || '0', 10) || m.videos || 0,
+          link: m.model_link || m.link || '',
+        }));
+        return NextResponse.json({ pornstars, hasMore: rawModels.length >= 20 });
       }
 
       if (pornstar) {

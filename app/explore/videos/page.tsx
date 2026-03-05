@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, Play, Eye, Clock, Grid3X3, Users, Flame } from 'lucide-react'
 
@@ -21,14 +22,21 @@ export default function VideosPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
-  // Fetch categories (once)
+  // Fetch categories (initially)
   useEffect(() => {
-    fetch('/api/videos?source=letsjerktv&mode=categories')
+    if (viewMode !== 'categories') return
+    setIsLoading(true)
+    fetch('/api/videos?source=letsjerktv&mode=categories&page=1')
       .then(res => res.json())
-      .then(data => setCategories(data.categories || []))
+      .then(data => {
+        setCategories(data.categories || [])
+        setHasMore(data.hasMore ?? false)
+      })
       .catch(console.error)
-  }, [])
+      .finally(() => setIsLoading(false))
+  }, [viewMode])
 
   // Build fetch URL for videos
   const buildUrl = useCallback((p: number) => {
@@ -96,6 +104,22 @@ export default function VideosPage() {
       return
     }
 
+    if (viewMode === 'categories') {
+      try {
+        const res = await fetch(`/api/videos?source=letsjerktv&mode=categories&page=${nextPage}`)
+        const data = await res.json()
+        if (data.categories?.length > 0) {
+          setCategories(prev => [...prev, ...data.categories])
+          setPage(nextPage)
+          setHasMore(data.hasMore ?? false)
+        } else {
+          setHasMore(false)
+        }
+      } catch { setHasMore(false) }
+      finally { setIsLoadingMore(false) }
+      return
+    }
+
     try {
       const res = await fetch(buildUrl(nextPage))
       const data = await res.json()
@@ -129,16 +153,13 @@ export default function VideosPage() {
   // Click category
   const handleCategoryClick = (cat: any) => {
     const slug = cat.slug || cat.name || cat
-    setActiveCategory(slug)
-    setActivePornstar('')
-    setSubmittedQuery('')
-    setViewMode('feed')
+    router.push(`/explore/videos?category=${encodeURIComponent(slug)}`)
   }
 
   // Click pornstar
   const handlePornstarClick = (ps: any) => {
-    const name = ps.name || ps.slug || ps
-    setActivePornstar(name)
+    const slug = ps.slug || ps.name || ps
+    setActivePornstar(slug)
     setActiveCategory('')
     setSubmittedQuery('')
     setViewMode('feed')
@@ -150,10 +171,6 @@ export default function VideosPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 mb-6 px-2">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-black uppercase tracking-tight text-foreground/90">
-            <Play className="w-5 h-5 inline-block mr-2 text-pink-500" />
-            Explore Videos
-          </h1>
           {(activeCategory || activePornstar || submittedQuery) && (
             <button 
               onClick={() => { setActiveCategory(''); setActivePornstar(''); setSubmittedQuery(''); }}
@@ -220,7 +237,7 @@ export default function VideosPage() {
               <button
                 key={`cat-${i}`}
                 onClick={() => handleCategoryClick(cat)}
-                className="group relative aspect-video bg-muted/20 rounded-lg overflow-hidden border border-muted/10 hover:border-pink-500/30 transition-all"
+                className="group relative aspect-video rounded-lg overflow-hidden border border-muted/10 hover:border-pink-500/30 transition-all"
               >
                 {thumb ? (
                   <img src={thumb} alt={name} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
@@ -229,15 +246,15 @@ export default function VideosPage() {
                     <Grid3X3 className="w-8 h-8 text-white/15" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-white font-black text-sm text-center px-2 drop-shadow-lg uppercase tracking-wide">
+                <div className="absolute inset-0 " />
+                <div className="absolute top-2 left-2 z-10 text-left max-w-[65%]">
+                  <span className="text-white font-black text-[13px] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] uppercase tracking-wide line-clamp-2 leading-tight">
                     {typeof name === 'string' ? name : JSON.stringify(name)}
                   </span>
                 </div>
-                {cat.count && (
-                  <div className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/60 rounded text-[8px] font-bold text-white/80">
-                    {cat.count}
+                {cat.count && Number(cat.count) > 0 && (
+                  <div className="absolute top-2 right-2 px-2 py-1 bg-black/80 backdrop-blur-md rounded-md text-[10px] font-black text-white/90 shadow-xl border border-white/10 z-10">
+                    {Number(cat.count).toLocaleString()} VIDEOS
                   </div>
                 )}
               </button>
@@ -386,14 +403,14 @@ export default function VideosPage() {
       )}
 
       {/* Infinite Scroll Loader */}
-      {hasMore && (videos.length > 0 || pornstars.length > 0) && viewMode !== 'categories' && (
+      {hasMore && (videos.length > 0 || pornstars.length > 0 || categories.length > 0) && (
         <div ref={loaderRef} className="mt-8 py-10 flex justify-center">
           <Loader2 className="w-6 h-6 animate-spin text-pink-500" />
         </div>
       )}
 
       {/* End of results */}
-      {!hasMore && (videos.length > 0 || pornstars.length > 0) && viewMode !== 'categories' && (
+      {!hasMore && (videos.length > 0 || pornstars.length > 0 || categories.length > 0) && (
         <div className="mt-8 py-6 flex flex-col items-center gap-1 border-t border-muted/20">
           <p className="text-muted-foreground text-xs font-medium">End of results</p>
         </div>

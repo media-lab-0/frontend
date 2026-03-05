@@ -137,8 +137,8 @@ export const adultDataLink = {
       const response = await client.get('/letsjerktv/feed', { params });
       return response.data;
     },
-    getCategories: async () => {
-      const response = await client.get('/letsjerktv/categories');
+    getCategories: async (params: { page?: number } = {}) => {
+      const response = await client.get('/letsjerktv/categories', { params });
       return response.data;
     },
     getCategoryVideos: async (params: { category: string; page?: number }) => {
