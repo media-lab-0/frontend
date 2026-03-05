@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/hydrate-channels",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
