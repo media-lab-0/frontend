@@ -181,7 +181,7 @@ function VideosPageContent() {
   // Click category
   const handleCategoryClick = (cat: any) => {
     const slug = cat.slug || cat.name || cat
-    router.push(`/explore/videos?category=${encodeURIComponent(slug)}`)
+    router.push(`/explore/videos/category/${encodeURIComponent(slug)}`)
   }
 
   // Click pornstar
