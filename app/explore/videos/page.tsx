@@ -187,10 +187,7 @@ function VideosPageContent() {
   // Click pornstar
   const handlePornstarClick = (ps: any) => {
     const slug = ps.slug || ps.name || ps
-    setActivePornstar(slug)
-    setActiveCategory('')
-    setSubmittedQuery('')
-    setViewMode('feed')
+    router.push(`/explore/videos?pornstar=${encodeURIComponent(slug)}`)
   }
 
   return (
