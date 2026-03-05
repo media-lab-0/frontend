@@ -3,26 +3,54 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @next/next/no-img-element */
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { Loader2, Play, Eye, Clock, Grid3X3, Users, Flame } from 'lucide-react'
 
 type ViewMode = 'feed' | 'categories' | 'pornstars'
 
-export default function VideosPage() {
+function VideosPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const urlCategory = searchParams.get('category') || ''
+  const urlPornstar = searchParams.get('pornstar') || ''
+  const urlQuery = searchParams.get('q') || ''
+
   const [videos, setVideos] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [pornstars, setPornstars] = useState<any[]>([])
-  const [activeCategory, setActiveCategory] = useState('')
-  const [activePornstar, setActivePornstar] = useState('')
-  const [submittedQuery, setSubmittedQuery] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('feed')
+  
+  const [activeCategory, setActiveCategory] = useState(urlCategory)
+  const [activePornstar, setActivePornstar] = useState(urlPornstar)
+  const [submittedQuery, setSubmittedQuery] = useState(urlQuery)
+  
+  // Default to feed but switch view gracefully
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    (urlCategory || urlPornstar || urlQuery) ? 'feed' : 'feed'
+  )
+
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loaderRef = useRef<HTMLDivElement>(null)
-  const router = useRouter()
+
+  // Sync URL params to local state
+  useEffect(() => {
+    const cat = searchParams.get('category') || ''
+    const ps = searchParams.get('pornstar') || ''
+    const q = searchParams.get('q') || ''
+
+    setActiveCategory(cat)
+    setActivePornstar(ps)
+    setSubmittedQuery(q)
+
+    if (cat || ps || q) {
+      setViewMode('feed')
+    }
+  }, [searchParams])
 
   // Fetch categories (initially)
   useEffect(() => {
@@ -416,5 +444,17 @@ export default function VideosPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function VideosPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center flex-1 items-center min-h-screen">
+        <Loader2 className="w-10 h-10 animate-spin text-pink-500" />
+      </div>
+    }>
+      <VideosPageContent />
+    </Suspense>
   )
 }
