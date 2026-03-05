@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import { Globe, Zap, Loader2 } from "lucide-react"
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Zap, Loader2 } from "lucide-react"
 import { ChannelFilters } from '@/components/gallery/ChannelFilters'
 import { ChannelCard } from '@/components/gallery/ChannelCard'
+
+const PAGE_SIZE = 20;
 
 export default function ChannelsPage() {
   const [activeFilters, setActiveFilters] = useState<any>({})
@@ -11,9 +14,13 @@ export default function ChannelsPage() {
   const [categories, setCategories] = useState<any[]>([])
   const [channels, setChannels] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const loaderRef = useRef<HTMLDivElement>(null)
 
+  // Fetch filter data
   useEffect(() => {
-    // 1. Fetch filter data for dropdowns
     fetch('/api/channels/filters')
       .then(res => res.json())
       .then(data => {
@@ -23,34 +30,75 @@ export default function ChannelsPage() {
       .catch(console.error)
   }, [])
 
-  useEffect(() => {
-    // 2. Fetch channel cards based on active filters
-    setIsLoading(true)
+  // Build params from filters
+  const buildParams = useCallback((off: number) => {
     const params = new URLSearchParams()
+    params.append('offset', off.toString())
+    params.append('limit', PAGE_SIZE.toString())
     if (activeFilters.alphabet) params.append('alphabet', activeFilters.alphabet.slug)
-    // Category mapping to channels isn't fully implemented in DB yet, but we'll send it
     if (activeFilters.category) params.append('category', activeFilters.category.slug)
+    return params.toString()
+  }, [activeFilters])
 
-    fetch(`/api/channels?${params.toString()}`)
+  // Initial fetch + filter changes
+  useEffect(() => {
+    setIsLoading(true)
+    setChannels([])
+    setOffset(0)
+    setHasMore(true)
+
+    fetch(`/api/channels?${buildParams(0)}`)
       .then(res => res.json())
       .then(data => {
         setChannels(data.channels || [])
+        setOffset(data.channels?.length || 0)
+        setHasMore(data.hasMore ?? false)
       })
       .catch(console.error)
       .finally(() => setIsLoading(false))
-  }, [activeFilters.alphabet, activeFilters.category])
+  }, [activeFilters.alphabet, activeFilters.category, buildParams])
+
+  // Load more
+  const loadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return
+    setIsLoadingMore(true)
+    try {
+      const res = await fetch(`/api/channels?${buildParams(offset)}`)
+      const data = await res.json()
+      if (data.channels && data.channels.length > 0) {
+        setChannels(prev => [...prev, ...data.channels])
+        setOffset(prev => prev + data.channels.length)
+        setHasMore(data.hasMore ?? false)
+      } else {
+        setHasMore(false)
+      }
+    } catch {
+      setHasMore(false)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [offset, hasMore, isLoadingMore, buildParams])
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    if (loaderRef.current) observer.observe(loaderRef.current)
+    return () => observer.disconnect()
+  }, [hasMore, isLoadingMore, loadMore])
 
   const handleReset = () => {
     setActiveFilters({})
   }
 
-  // If a specific network is selected from the dropdown, navigate directly?
-  // Or just filter the grid?
-  // User selected "Blacked" in dropdown -> we should probably just show Blacked card.
-  // Actually, if they pick a network in dropdown, it's better to just navigate to /channel/[slug]
   const handleFilterChange = (newFilters: any) => {
     if (newFilters.network) {
-      // Direct navigation if a single network is picked from dropdown
       window.location.href = `/channel/${newFilters.network.slug}`
       return
     }
@@ -59,17 +107,6 @@ export default function ChannelsPage() {
 
   return (
     <div className="flex flex-col w-full max-w-[1600px] mx-auto px-4 md:px-8 py-8 bg-background min-h-screen">
-      {/* Header */}
-      <div className="flex flex-col gap-2 mb-8">
-        <div className="flex items-center gap-3 text-pink-500 mb-2">
-            <Globe className="w-6 h-6" />
-            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight">Channel Directory</h1>
-        </div>
-        <p className="text-muted-foreground max-w-2xl font-medium text-sm">
-          Browse our curated list of top-tier adult sites and networks. Click a channel to view its full gallery collection.
-        </p>
-      </div>
-
       {/* Filters */}
       <ChannelFilters 
         activeFilters={activeFilters}
@@ -79,7 +116,7 @@ export default function ChannelsPage() {
         categories={categories}
       />
 
-      {/* Main Content: Channel Card Grid */}
+      {/* Main Content */}
       <div className="flex flex-col gap-6">
           <div className="flex items-center justify-between border-b border-muted/20 pb-4">
               <h2 className="text-sm font-black uppercase tracking-widest text-foreground/80">
@@ -96,16 +133,31 @@ export default function ChannelsPage() {
                <Loader2 className="w-8 h-8 animate-spin text-pink-500" />
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {channels.map((chan) => (
+            <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {channels.map((chan, i) => (
                 <ChannelCard 
-                  key={chan.slug}
+                  key={`${chan.slug}-${i}`}
                   name={chan.name}
                   slug={chan.slug}
                   imageUrl={chan.image_url}
                   galleryCount={chan.gallery_count}
                 />
               ))}
+            </div>
+          )}
+
+          {/* Infinite Scroll Loader */}
+          {hasMore && channels.length > 0 && (
+            <div ref={loaderRef} className="mt-4 py-8 flex justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-pink-500" />
+            </div>
+          )}
+
+          {/* End of results */}
+          {!hasMore && channels.length > 0 && (
+            <div className="mt-4 py-6 flex flex-col items-center gap-1 border-t border-muted/20">
+              <p className="text-muted-foreground text-xs font-medium">End of results</p>
+              <p className="text-muted-foreground/50 text-[10px] uppercase font-bold">Showing {channels.length} channels</p>
             </div>
           )}
 

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/hydrate-channels",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

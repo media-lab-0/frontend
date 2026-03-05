@@ -160,94 +160,73 @@ export default async function GalleryPage({ params }: GalleryPageProps) {
     }
   }
 
-  // Helper to extract channel/performers from tags + title parsing
-  const extractMetadata = (title: string, tags: any[]) => {
-    let models: { name: string; slug: string }[] = [];
-    let channels: { name: string; slug: string }[] = [];
-    let categories: { name: string; slug: string }[] = [];
-    let tagsList: { name: string; slug: string }[] = [];
+  // Find models from DB whose names appear in the title
+  let dbModels: any[] = [];
+  if (gallery.title) {
+    try {
+      dbModels = await sql`
+        SELECT name, slug, type FROM tags 
+        WHERE type = 'model' 
+        AND position(lower(name) in lower(${gallery.title})) > 0
+        LIMIT 5
+      `;
+    } catch { /* ignore */ }
+  }
 
-    // 1. Categorize by Type from DB tags
-    tags.forEach(t => {
-      const item = { name: t.name, slug: t.slug };
-      if (t.type === 'model') models.push(item);
-      else if (t.type === 'channel') channels.push(item);
-      else if (t.is_category || t.name.split(' ').length <= 2) categories.push(item);
-      else tagsList.push(item);
-    });
+  // Categorize all tags
+  const models: { name: string; slug: string }[] = [];
+  const channels: { name: string; slug: string }[] = [];
+  const categories: { name: string; slug: string }[] = [];
+  const tagsList: { name: string; slug: string }[] = [];
 
-    // 2. Enhanced title parsing for model names (if none found from tags)
-    if (models.length === 0) {
-      // Common noise words to strip from extracted names
-      const noiseWords = new Set(['hot', 'xxx', 'porn', 'pics', 'naked', 'nude', 'sex', 'sexy', 'busty', 'big', 'tits', 'ass', 'in', 'the', 'a', 'an', 'her', 'his', 'some', 'gets', 'shows', 'takes', 'has', 'and', 'or', 'for', 'from', 'with', 'on', 'at', 'to', 'of', 'is', 'are', 'gallery', 'photos', 'images']);
+  // DB model matches first
+  dbModels.forEach((t: any) => {
+    models.push({ name: t.name, slug: t.slug });
+  });
 
-      // Patterns: "featuring X", "starring X", "with X", "by X"
-      const patterns = [
-        /(?:featuring|feat\.?|ft\.?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
-        /(?:starring)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
-        /(?:performed\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
-      ];
+  // Then tags from gallery
+  tags.forEach((t: any) => {
+    const item = { name: t.name, slug: t.slug };
+    if (t.type === 'model') {
+      if (!models.some(m => m.slug === t.slug)) models.push(item);
+    }
+    else if (t.type === 'channel') channels.push(item);
+    else if (t.is_category || t.name.split(' ').length <= 2) categories.push(item);
+    else tagsList.push(item);
+  });
 
-      for (const pattern of patterns) {
-        const match = title.match(pattern);
-        if (match) {
-          const rawName = match[1].trim();
-          // Filter out noise words from the end of the name
-          const words = rawName.split(/\s+/).filter(w => !noiseWords.has(w.toLowerCase()));
-          if (words.length >= 2) {
-            const name = words.slice(0, 3).join(' ');
-            models.push({ name, slug: name.toLowerCase().replace(/\s+/g, '-') });
-            break;
-          }
-        }
-      }
-
-      // Last resort: look for "Firstname Lastname" proper nouns in the title
-      if (models.length === 0) {
-        // Match sequences of 2-3 capitalized words that look like names
-        const namePattern = /\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\b/g;
-        let nameMatch;
-        while ((nameMatch = namePattern.exec(title)) !== null) {
-          const candidate = nameMatch[1];
-          const words = candidate.split(/\s+/);
-          // Skip if ALL words are noise/category words
-          const isNoise = words.every(w => noiseWords.has(w.toLowerCase()));
-          if (!isNoise && words.length >= 2) {
-            // Also skip if the name matches a known channel in our tags
-            const slug = candidate.toLowerCase().replace(/\s+/g, '-');
-            const isChannel = channels.some(c => c.slug === slug) || tags.some(t => t.type === 'channel' && t.slug === slug);
-            if (!isChannel) {
-              models.push({ name: candidate, slug });
-              break; // Take only the first good match
-            }
-          }
+  // Fallback: regex title parsing only if DB found nothing
+  if (models.length === 0) {
+    const patterns = [
+      /(?:featuring|feat\.?|ft\.?)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]*){0,2})/,
+      /(?:starring)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]*){0,2})/,
+      /(?:performed\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]*){0,2})/,
+    ];
+    for (const pattern of patterns) {
+      const match = gallery.title.match(pattern);
+      if (match) {
+        const noiseWords = new Set(['hot', 'xxx', 'porn', 'pics', 'naked', 'nude', 'sex', 'sexy', 'images', 'photos', 'gallery']);
+        const rawName = match[1].trim();
+        const words = rawName.split(/\s+/).filter((w: string) => !noiseWords.has(w.toLowerCase()));
+        if (words.length >= 1) {
+          const name = words.slice(0, 3).join(' ');
+          models.push({ name, slug: name.toLowerCase().replace(/\s+/g, '-') });
+          break;
         }
       }
     }
+  }
 
-    // 3. Detect channel from title prefix if none found from tags
-    if (channels.length === 0) {
-      // Common channel patterns: "ChannelName - Title" or "ChannelName featuring ..."
-      const channelTags = tags.filter(t => t.type === 'channel');
-      if (channelTags.length > 0) {
-        channels = channelTags.map((t: any) => ({ name: t.name, slug: t.slug }));
-      }
-    }
-
-    const clean = (val: string | null) => {
-        if (!val) return null;
-        return val.replace(/\s+(?:Naked\s+)?Porn\s+Pics$/i, '').trim();
-    };
-
-    return { 
-      models: models.map(m => ({ ...m, name: clean(m.name)! })), 
-      channels: channels.map(c => ({ ...c, name: clean(c.name)! })), 
-      categories: categories.map(c => ({ ...c, name: clean(c.name)! })),
-      tagsList: tagsList.map(t => ({ ...t, name: clean(t.name)! }))
-    };
+  const clean = (val: string | null) => {
+      if (!val) return null;
+      return val.replace(/\s+(?:Naked\s+)?Porn\s+Pics$/i, '').trim();
   };
 
-  const { models, channels, categories, tagsList } = extractMetadata(gallery.title, tags);
+  const cleanedModels = models.map(m => ({ ...m, name: clean(m.name)! }));
+  const cleanedChannels = channels.map(c => ({ ...c, name: clean(c.name)! }));
+  const cleanedCategories = categories.map(c => ({ ...c, name: clean(c.name)! }));
+  const cleanedTagsList = tagsList.map(t => ({ ...t, name: clean(t.name)! }));
+
 
   return (
     <div className="flex flex-col w-full max-w-[1600px] mx-auto px-2 md:px-6 py-4 md:py-6 bg-background">
@@ -275,11 +254,11 @@ export default async function GalleryPage({ params }: GalleryPageProps) {
             {/* Structured Metadata Section */}
             <div className="flex flex-col gap-3 mt-4 text-sm font-bold uppercase tracking-tighter">
                {/* Channels */}
-               {channels.length > 0 && (
+               {cleanedChannels.length > 0 && (
                  <div className="flex flex-col md:flex-row md:items-start gap-2">
                    <span className="text-muted-foreground w-24 flex-shrink-0 mt-1">Channel:</span>
                    <div className="flex flex-wrap gap-1.5">
-                     {channels.map(c => (
+                     {cleanedChannels.map(c => (
                        <Link key={c.slug} href={`/tag/${c.slug}`} className="px-3 py-1 bg-muted/40 hover:bg-muted/60 text-foreground/90 rounded border border-muted/20 transition-all font-black text-[11px]">
                          {c.name}
                        </Link>
@@ -292,7 +271,7 @@ export default async function GalleryPage({ params }: GalleryPageProps) {
                <div className="flex flex-col md:flex-row md:items-start gap-2">
                  <span className="text-muted-foreground w-24 flex-shrink-0 mt-1">Models:</span>
                  <div className="flex flex-wrap gap-1.5">
-                   {models.map(m => (
+                   {cleanedModels.map(m => (
                      <Link key={m.slug} href={`/pornstar/${m.slug}`} className="px-3 py-1 bg-pink-500/10 hover:bg-pink-500/20 text-pink-500 rounded border border-pink-500/20 transition-all font-black text-[11px]">
                        {m.name}
                      </Link>
@@ -304,11 +283,11 @@ export default async function GalleryPage({ params }: GalleryPageProps) {
                </div>
 
                {/* Categories */}
-               {categories.length > 0 && (
+               {cleanedCategories.length > 0 && (
                  <div className="flex flex-col md:flex-row md:items-start gap-2">
                    <span className="text-muted-foreground w-24 flex-shrink-0 mt-1">Categories:</span>
                    <div className="flex flex-wrap gap-1.5">
-                     {categories.map(c => (
+                     {cleanedCategories.map(c => (
                        <Link key={c.slug} href={`/tag/${c.slug}`} className="px-3 py-1 bg-muted/30 hover:bg-muted/50 text-foreground/80 rounded border border-muted/20 transition-all font-black text-[11px]">
                          {c.name}
                        </Link>
@@ -321,11 +300,11 @@ export default async function GalleryPage({ params }: GalleryPageProps) {
                )}
 
                {/* Tags List */}
-               {tagsList.length > 0 && (
+               {cleanedTagsList.length > 0 && (
                   <div className="flex flex-col md:flex-row md:items-start gap-2">
                     <span className="text-muted-foreground w-24 flex-shrink-0 mt-1">Tags List:</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {tagsList.map(t => (
+                      {cleanedTagsList.map(t => (
                         <Link key={t.slug} href={`/tag/${t.slug}`} className="px-2.5 py-1 bg-muted/10 hover:bg-muted/30 text-muted-foreground hover:text-foreground rounded border border-muted/10 transition-all text-[11px] font-medium">
                           {t.name}
                         </Link>

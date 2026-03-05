@@ -58,7 +58,7 @@ export function ChannelFilters({
   }
 
   return (
-    <div ref={filterRef} className="flex flex-wrap items-center gap-2 mb-8 relative z-50">
+    <div ref={filterRef} className="flex flex-wrap items-center gap-2 mb-2 relative z-50">
       {filters.map((f) => (
         <div key={f.id} className="relative">
           <button 

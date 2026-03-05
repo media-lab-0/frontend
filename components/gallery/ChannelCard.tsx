@@ -21,7 +21,7 @@ export function ChannelCard({ name, slug, imageUrl, galleryCount }: ChannelCardP
       <img 
         src={imageUrl}
         alt={name}
-        className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+        className="absolute inset-0 w-full h-full object-cover"
         loading="lazy"
       />
       
@@ -32,7 +32,7 @@ export function ChannelCard({ name, slug, imageUrl, galleryCount }: ChannelCardP
         </span>
         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/40 backdrop-blur-md rounded text-[11px] font-black text-white/90">
           <Folder className="w-3 h-3 text-pink-500" />
-          <span>{galleryCount.toLocaleString()}</span>
+          <span>{galleryCount > 0 ? galleryCount.toLocaleString() : '—'}</span>
         </div>
       </div>
 
