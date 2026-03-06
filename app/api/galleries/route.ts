@@ -16,6 +16,11 @@ export async function GET(request: Request) {
   try {
     let galleries: any[] = [];
 
+    const getHighResImage = (url: string) => {
+      if (!url) return null;
+      return url.replace(/-\d+[xX]\d+(?=\.[a-zA-Z]+$)/, '');
+    };
+
     // 1. Try Cache (Selective for offsets)
     // For now, let's keep it simple and fetch fresh if offset > 0 to avoid complex pagination cache management
     // but we could cache specific pages if needed.
@@ -33,7 +38,7 @@ export async function GET(request: Request) {
         galleries = result.posts.map((g: any) => ({
           ...g,
           slug: g.slug || (g.gallery_url || g.url).split('/').filter(Boolean).pop(),
-          cover_url: g.image_url || g.cover_url
+          cover_url: getHighResImage(g.image_url || g.cover_url)
         }));
       }
     } else if (filter) {
@@ -43,7 +48,7 @@ export async function GET(request: Request) {
         galleries = result.galleries.map((g: any) => ({
           ...g,
           slug: g.slug || (g.gallery_url || g.url).split('/').filter(Boolean).pop(),
-          cover_url: g.image_url || g.cover_url
+          cover_url: getHighResImage(g.image_url || g.cover_url)
         }));
       }
     }

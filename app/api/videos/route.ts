@@ -23,6 +23,12 @@ export async function GET(request: Request) {
     let categories: any[] = [];
     let pornstars: any[] = [];
 
+    // Helper to strip low-res suffixes from image strings (e.g. -150x150.jpg or -270X200.JPG)
+    const getHighResImage = (url: string) => {
+      if (!url) return null;
+      return url.replace(/-\d+[xX]\d+(?=\.[a-zA-Z]+$)/, '');
+    };
+
     if (source === 'letsjerktv') {
       // --- LetsJerkTV ---
       if (mode === 'categories') {
@@ -33,7 +39,7 @@ export async function GET(request: Request) {
         categories = rawCats.map((c: any) => ({
           name: c.category_name || c.name || '',
           slug: c.category_name || c.name || '',
-          thumbnail: c.category_image || c.thumbnail || c.image || null,
+          thumbnail: getHighResImage(c.category_image || c.thumbnail || c.image),
           count: c.video_count || c.count || 0,
           link: c.category_link || c.link || '',
         }));
@@ -48,7 +54,7 @@ export async function GET(request: Request) {
         pornstars = rawModels.map((m: any) => ({
           name: m.model_name || m.name || '',
           slug: (m.model_link || '').split('/').filter(Boolean).pop() || '',
-          thumbnail: m.model_image || m.image || m.thumbnail || null,
+          thumbnail: getHighResImage(m.model_image || m.image || m.thumbnail),
           videos: parseInt(m.video_count || '0', 10) || m.videos || 0,
           link: m.model_link || m.link || '',
         }));

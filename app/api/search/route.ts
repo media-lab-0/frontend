@@ -17,6 +17,12 @@ export async function GET(request: Request) {
   try {
     const results: any = { query: q, galleries: [], model: null, categories: [], channels: [], relatedModels: [] };
 
+    // Helper to strip low-res suffixes from image strings
+    const getHighResImage = (url: string) => {
+      if (!url) return null;
+      return url.replace(/-\d+[xX]\d+(?=\.[a-zA-Z]+$)/, '');
+    };
+
     // 1. Search local DB first (fast, no quota)
     const dbTags = await sql`
       SELECT name, slug, type, image_url, is_category
@@ -83,7 +89,7 @@ export async function GET(request: Request) {
         results.galleries = apiResult.posts.map((g: any) => ({
           title: g.title,
           slug: g.slug || (g.gallery_url || g.url || '').split('/').filter(Boolean).pop(),
-          cover_url: g.image_url || g.cover_url,
+          cover_url: getHighResImage(g.image_url || g.cover_url),
           url: g.gallery_url || g.url
         }));
       }

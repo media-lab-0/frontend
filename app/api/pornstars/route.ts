@@ -20,6 +20,12 @@ export async function GET(request: Request) {
 
   try {
     const data = await adultDataLink.pornpics.getPornstars(params);
+    if (data && data.models) {
+      data.models = data.models.map((m: any) => ({
+        ...m,
+        image_url: m.image_url ? m.image_url.replace(/-\d+[xX]\d+(?=\.[a-zA-Z]+$)/, '') : null
+      }));
+    }
     return NextResponse.json(data);
   } catch (error) {
     console.error('API Error (Pornstars):', error);
